@@ -990,7 +990,6 @@
 # app/app.py
 # app.py
 # app.py
-
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -998,6 +997,7 @@ import matplotlib.pyplot as plt
 from pathlib import Path
 import sys
 import joblib
+import requests  # <--- added for downloading model
 
 # PATH FIX
 ROOT = Path(__file__).resolve().parent.parent
@@ -1009,8 +1009,43 @@ from shap_utils import get_explainer, explain_instance
 
 st.set_page_config(layout="wide", page_title="InsureIQ Premium Predictor", page_icon="🛡️")
 
+# ---------------- MODEL DOWNLOADER ----------------
+MODEL_DIR = ROOT / "models"
+MODEL_PATH = MODEL_DIR / "best_model.pkl"
+SHAP_BG_PATH = MODEL_DIR / "shap_background.pkl"
+
+def download_file_from_gdrive(file_id, destination):
+    if not destination.exists():
+        MODEL_DIR.mkdir(parents=True, exist_ok=True)
+        url = f"https://drive.google.com/uc?id={file_id}"
+        with st.spinner(f"📦 Downloading {destination.name} from Google Drive..."):
+            try:
+                response = requests.get(url, stream=True)
+                response.raise_for_status()
+                with open(destination, 'wb') as f:
+                    for chunk in response.iter_content(chunk_size=8192):
+                        if chunk:
+                            f.write(chunk)
+                st.success(f"✅ {destination.name} downloaded successfully!")
+            except Exception as e:
+                st.error(f"❌ Failed to download {destination.name}: {e}")
+                st.stop()
+
+# <--- YOUR Google Drive file IDs
+MODEL_FILE_ID = "16wrwJWrg-XuZFsBWc6N0zIdJVVAbRPWE"  # your best_model.pkl
+SHAP_BG_FILE_ID = "YOUR_SHAP_BACKGROUND_FILE_ID_HERE"  # replace if you have shap_background.pkl on Drive
+
+# download if missing
+download_file_from_gdrive(MODEL_FILE_ID, MODEL_PATH)
+# optionally download shap background
+# download_file_from_gdrive(SHAP_BG_FILE_ID, SHAP_BG_PATH)
+
 # ---------------- LOAD MODEL ----------------
-predictor = Predictor(ROOT / "models/best_model.pkl")
+@st.cache_resource
+def load_predictor():
+    return Predictor(MODEL_PATH)
+
+predictor = load_predictor()
 
 # ---------------- INPUT UI ----------------
 st.title("🛡️ InsureIQ — Intelligent Premium Predictor")
@@ -1037,7 +1072,6 @@ with col3:
 # ---------------- BUILD DF ----------------
 def build_df():
     row = {col: 0 for col in predictor.feature_cols}
-
     row.update({
         "age": age,
         "exposure_time": exposure,
@@ -1052,7 +1086,6 @@ def build_df():
         "reimbursement": reimb,
         "new_business": new
     })
-
     return pd.DataFrame([row])
 
 # ---------------- PREDICT ----------------
@@ -1086,12 +1119,9 @@ if st.button("🔮 Predict Premium"):
 
     # ---------------- SHAP EXPLAINABILITY ----------------
     st.subheader("🔍 Feature Contributions")
-    bg_file = ROOT / "models" / "shap_background.pkl"
-    X_bg = joblib.load(bg_file) if bg_file.exists() else df
-
+    X_bg = joblib.load(SHAP_BG_PATH) if SHAP_BG_PATH.exists() else df
     explainer = get_explainer(predictor.model, X_bg)
     shap_vals = explain_instance(explainer, df)
-
     shap_df = pd.DataFrame(list(shap_vals.items()), columns=['Feature','Impact'])
     shap_df = shap_df.sort_values(by='Impact', key=abs, ascending=False)
     st.table(shap_df.head(10))

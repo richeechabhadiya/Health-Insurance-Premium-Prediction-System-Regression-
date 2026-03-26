@@ -1,0 +1,6 @@
+venv/
+data/
+models/*.pkl
+notebooks/catboost_info/
+__pycache__/
+*.log

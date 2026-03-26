@@ -1,0 +1,38 @@
+{
+    "Train MAE": {
+        "Linear Regression": 182.94295193541757,
+        "Random Forest": 187.04945984064227,
+        "Gradient Boosting": 182.09690415421687,
+        "XGBoost": 165.8156650984087
+    },
+    "Test MAE": {
+        "Linear Regression": 219.5654730245025,
+        "Random Forest": 190.64588261857202,
+        "Gradient Boosting": 185.44604409408385,
+        "XGBoost": 170.1410439860736
+    },
+    "Train RMSE": {
+        "Linear Regression": 355.535623231612,
+        "Random Forest": 375.63035072314193,
+        "Gradient Boosting": 346.8734620134203,
+        "XGBoost": 334.78873316319624
+    },
+    "Test RMSE": {
+        "Linear Regression": 431.0691148370179,
+        "Random Forest": 395.95557576233574,
+        "Gradient Boosting": 383.8805000704224,
+        "XGBoost": 374.9993996819189
+    },
+    "Train R2": {
+        "Linear Regression": 0.61128688027417,
+        "Random Forest": 0.5661053382556087,
+        "Gradient Boosting": 0.6299971194072398,
+        "XGBoost": 0.6553290958026258
+    },
+    "Test R2": {
+        "Linear Regression": 0.4365191254714388,
+        "Random Forest": 0.5245790773908188,
+        "Gradient Boosting": 0.5531338396343097,
+        "XGBoost": 0.5735712183939318
+    }
+}

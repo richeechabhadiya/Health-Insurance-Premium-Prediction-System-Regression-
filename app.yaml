@@ -1,2 +1,7 @@
-name: Health Insurance Premium Prediction System
-command: ["streamlit", "run", "app/app.py"]
+command: [
+  "streamlit", 
+  "run", 
+  "app/app.py", 
+  "--server.address", 
+  "0.0.0.0"
+]

@@ -992,6 +992,15 @@
 # app.py
 # app/app.py  — InsureIQ Premium Predictor (FIXED: SHAP + compact graphs)
 # app/app.py  — InsureIQ Premium Predictor  (Premium UI Redesign)
+import os
+from huggingface_hub import login
+
+# This bypasses the need for Databricks Secret Scopes
+os.environ["HF_TOKEN"] = "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"
+login(token=os.environ["HF_TOKEN"])
+
+
+
 
 import streamlit as st
 import pandas as pd

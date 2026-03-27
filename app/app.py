@@ -990,16 +990,22 @@
 # app/app.py
 # app.py
 # app.py
+# app/app.py  — InsureIQ Premium Predictor (FIXED: SHAP + compact graphs)
+# app/app.py  — InsureIQ Premium Predictor  (Premium UI Redesign)
+
 import streamlit as st
 import pandas as pd
 import numpy as np
+import matplotlib
+matplotlib.use("Agg")
 import matplotlib.pyplot as plt
+import matplotlib.patches as mpatches
 from pathlib import Path
 import sys
 import joblib
-import requests  # <--- added for downloading model
+import requests
 
-# PATH FIX
+# ================= PATH FIX =================
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.append(str(ROOT / "src" / "utils"))
 sys.path.append(str(ROOT / "src" / "explainability"))
@@ -1007,38 +1013,282 @@ sys.path.append(str(ROOT / "src" / "explainability"))
 from predict import Predictor
 from shap_utils import get_explainer, explain_instance
 
-st.set_page_config(layout="wide", page_title="InsureIQ Premium Predictor", page_icon="🛡️")
+# ================= PAGE CONFIG =================
+st.set_page_config(
+    layout="wide",
+    page_title="InsureIQ — Premium Predictor",
+    page_icon="🛡️",
+    initial_sidebar_state="collapsed",
+)
 
-# ---------------- MODEL DOWNLOADER ----------------
-MODEL_DIR = ROOT / "models"
+# ================= GLOBAL CSS =================
+st.markdown("""
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Sora:wght@300;400;500;600;700&family=Space+Mono:wght@400;700&display=swap');
+
+/* ── Root palette ── */
+:root {
+  --bg:        #0a0e1a;
+  --surface:   #111827;
+  --surface2:  #1a2236;
+  --border:    rgba(99,179,237,0.12);
+  --gold:      #f5c842;
+  --gold-soft: rgba(245,200,66,0.10);
+  --teal:      #38bdf8;
+  --teal-soft: rgba(56,189,248,0.08);
+  --red:       #f87171;
+  --green:     #34d399;
+  --text:      #e2e8f0;
+  --muted:     #64748b;
+  --radius:    12px;
+}
+
+/* ── Global reset ── */
+html, body, [data-testid="stAppViewContainer"] {
+  background: var(--bg) !important;
+  font-family: 'Sora', sans-serif;
+  color: var(--text);
+}
+[data-testid="stHeader"], [data-testid="stToolbar"] { display:none !important; }
+[data-testid="stSidebar"] { display:none !important; }
+.block-container { padding: 0 2rem 4rem 2rem !important; max-width: 1400px !important; }
+
+/* ── Hero banner ── */
+.iq-hero {
+  background: linear-gradient(135deg, #0f172a 0%, #1e293b 60%, #0f2744 100%);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 2.5rem 3rem;
+  margin: 1.5rem 0 2rem 0;
+  position: relative;
+  overflow: hidden;
+}
+.iq-hero::before {
+  content:'';
+  position:absolute; top:-60px; right:-60px;
+  width:280px; height:280px;
+  background: radial-gradient(circle, rgba(245,200,66,0.12) 0%, transparent 70%);
+  pointer-events:none;
+}
+.iq-hero::after {
+  content:'';
+  position:absolute; bottom:-40px; left:30%;
+  width:200px; height:200px;
+  background: radial-gradient(circle, rgba(56,189,248,0.08) 0%, transparent 70%);
+  pointer-events:none;
+}
+.iq-logo { font-size:2.4rem; font-weight:700; letter-spacing:-1px; margin:0; }
+.iq-logo span { color: var(--gold); }
+.iq-tagline { color: var(--muted); font-size:.95rem; margin:.35rem 0 0 0; letter-spacing:.5px; }
+.iq-badge {
+  display:inline-flex; align-items:center; gap:.4rem;
+  background: var(--gold-soft); border:1px solid rgba(245,200,66,0.25);
+  border-radius:20px; padding:.25rem .85rem;
+  font-size:.75rem; color:var(--gold); font-weight:600; letter-spacing:.5px;
+  margin-top:1rem;
+}
+
+/* ── Section headers ── */
+.iq-section {
+  display:flex; align-items:center; gap:.6rem;
+  font-size:1rem; font-weight:600; letter-spacing:.5px;
+  color: var(--teal); text-transform:uppercase;
+  margin: 2rem 0 .75rem 0;
+  padding-bottom:.5rem;
+  border-bottom:1px solid var(--border);
+}
+.iq-section-icon { font-size:1.1rem; }
+
+/* ── Input card ── */
+.iq-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 1.5rem;
+  margin-bottom:1rem;
+}
+.iq-label {
+  font-size:.7rem; font-weight:600; letter-spacing:1px;
+  text-transform:uppercase; color:var(--muted);
+  margin-bottom:.3rem;
+}
+
+/* ── Streamlit element overrides ── */
+div[data-testid="stSlider"] label,
+div[data-testid="stSelectbox"] label,
+div[data-testid="stNumberInput"] label {
+  font-size:.72rem !important; font-weight:600 !important;
+  letter-spacing:.8px !important; text-transform:uppercase !important;
+  color: var(--muted) !important;
+}
+div[data-testid="stSlider"] > div > div > div {
+  background: var(--teal) !important;
+}
+div[data-testid="stSelectbox"] > div > div {
+  background: var(--surface2) !important;
+  border: 1px solid var(--border) !important;
+  border-radius: 8px !important;
+  color: var(--text) !important;
+}
+div[data-testid="stNumberInput"] > div > div > input {
+  background: var(--surface2) !important;
+  border: 1px solid var(--border) !important;
+  border-radius: 8px !important;
+  color: var(--text) !important;
+}
+/* Button */
+div[data-testid="stButton"] > button {
+  background: linear-gradient(135deg, #b7891a 0%, var(--gold) 100%) !important;
+  color: #0a0e1a !important;
+  font-family: 'Sora', sans-serif !important;
+  font-weight: 700 !important;
+  font-size: .9rem !important;
+  letter-spacing: .5px !important;
+  border: none !important;
+  border-radius: 10px !important;
+  padding: .75rem 2.5rem !important;
+  width: 100% !important;
+  transition: opacity .2s !important;
+  box-shadow: 0 4px 20px rgba(245,200,66,0.25) !important;
+}
+div[data-testid="stButton"] > button:hover { opacity:.88 !important; }
+
+/* ── Result card ── */
+.iq-result {
+  background: linear-gradient(135deg, #0f2744 0%, #1a3a5c 100%);
+  border: 1px solid rgba(56,189,248,0.3);
+  border-radius: var(--radius);
+  padding: 1.8rem 2rem;
+  margin: 1.5rem 0;
+  display: flex; align-items:center; justify-content:space-between;
+}
+.iq-result-label { font-size:.72rem; font-weight:600; letter-spacing:1.2px; text-transform:uppercase; color:var(--teal); }
+.iq-result-value { font-family:'Space Mono', monospace; font-size:2.8rem; font-weight:700; color:#fff; letter-spacing:-1px; margin:.3rem 0; }
+.iq-result-sub { font-size:.8rem; color:var(--muted); }
+.iq-result-icon { font-size:3.5rem; opacity:.7; }
+
+/* ── KPI pills ── */
+.iq-kpi-row { display:flex; gap:1rem; margin:1rem 0; flex-wrap:wrap; }
+.iq-kpi {
+  background: var(--surface2);
+  border:1px solid var(--border);
+  border-radius:10px;
+  padding:.8rem 1.2rem;
+  flex:1; min-width:140px;
+}
+.iq-kpi-label { font-size:.65rem; font-weight:600; letter-spacing:1px; text-transform:uppercase; color:var(--muted); }
+.iq-kpi-value { font-family:'Space Mono',monospace; font-size:1.3rem; font-weight:700; color:var(--text); margin-top:.2rem; }
+.iq-kpi-delta { font-size:.7rem; margin-top:.15rem; }
+.delta-up { color:var(--red); }
+.delta-down { color:var(--green); }
+.delta-neutral { color:var(--muted); }
+
+/* ── SHAP table ── */
+div[data-testid="stDataFrame"] {
+  border-radius: 10px !important;
+  overflow: hidden !important;
+  border: 1px solid var(--border) !important;
+}
+
+/* ── Suggestions ── */
+.iq-suggestion {
+  background: var(--surface2);
+  border-left: 3px solid var(--gold);
+  border-radius: 0 8px 8px 0;
+  padding: .65rem 1rem;
+  margin: .4rem 0;
+  font-size:.87rem;
+  color: var(--text);
+}
+.iq-suggestion.warn { border-left-color: var(--red); }
+.iq-suggestion.ok   { border-left-color: var(--green); }
+
+/* ── Simulation card ── */
+.iq-sim-card {
+  background: var(--surface);
+  border:1px solid var(--border);
+  border-radius:var(--radius);
+  padding:1.5rem;
+  display:flex; gap:2rem; align-items:center; flex-wrap:wrap;
+}
+.iq-sim-item { flex:1; min-width:160px; }
+.iq-sim-lbl { font-size:.65rem; font-weight:600; letter-spacing:1px; text-transform:uppercase; color:var(--muted); }
+.iq-sim-val { font-family:'Space Mono',monospace; font-size:1.5rem; font-weight:700; color:var(--text); margin-top:.2rem; }
+.iq-sim-savings { color:var(--green); }
+
+/* ── Report textarea ── */
+div[data-testid="stTextArea"] textarea {
+  background: var(--surface2) !important;
+  border: 1px solid var(--border) !important;
+  border-radius: 8px !important;
+  font-family: 'Space Mono', monospace !important;
+  font-size:.75rem !important;
+  color: var(--text) !important;
+}
+
+/* ── Download button ── */
+div[data-testid="stDownloadButton"] > button {
+  background: var(--surface2) !important;
+  color: var(--teal) !important;
+  border: 1px solid rgba(56,189,248,0.3) !important;
+  border-radius: 8px !important;
+  font-family: 'Sora', sans-serif !important;
+  font-weight: 600 !important;
+}
+
+/* ── Success/Error ── */
+div[data-testid="stAlert"] {
+  border-radius: 10px !important;
+}
+
+/* ── Divider ── */
+.iq-divider {
+  height:1px; background:var(--border);
+  margin:2rem 0;
+}
+
+/* ── Model badge row ── */
+.iq-model-info {
+  display:flex; gap:.75rem; flex-wrap:wrap; margin-top:1rem;
+}
+.iq-model-pill {
+  background:var(--surface2); border:1px solid var(--border);
+  border-radius:20px; padding:.25rem .9rem;
+  font-size:.72rem; color:var(--muted);
+}
+.iq-model-pill b { color:var(--text); }
+
+/* ── scrollbar ── */
+::-webkit-scrollbar { width:6px; }
+::-webkit-scrollbar-track { background:var(--bg); }
+::-webkit-scrollbar-thumb { background:var(--surface2); border-radius:3px; }
+</style>
+""", unsafe_allow_html=True)
+
+# ================= MODEL PATHS =================
+MODEL_DIR  = ROOT / "models"
 MODEL_PATH = MODEL_DIR / "best_model.pkl"
-SHAP_BG_PATH = MODEL_DIR / "shap_background.pkl"
 
+# ---------------- DOWNLOAD FUNCTION ----------------
 def download_file_from_gdrive(file_id, destination):
     if not destination.exists():
         MODEL_DIR.mkdir(parents=True, exist_ok=True)
         url = f"https://drive.google.com/uc?id={file_id}"
-        with st.spinner(f"📦 Downloading {destination.name} from Google Drive..."):
+        with st.spinner(f"📦 Downloading {destination.name} …"):
             try:
                 response = requests.get(url, stream=True)
                 response.raise_for_status()
-                with open(destination, 'wb') as f:
+                with open(destination, "wb") as f:
                     for chunk in response.iter_content(chunk_size=8192):
                         if chunk:
                             f.write(chunk)
-                st.success(f"✅ {destination.name} downloaded successfully!")
+                st.success(f"✅ {destination.name} downloaded!")
             except Exception as e:
                 st.error(f"❌ Failed to download {destination.name}: {e}")
                 st.stop()
 
-# <--- YOUR Google Drive file IDs
-MODEL_FILE_ID = "16wrwJWrg-XuZFsBWc6N0zIdJVVAbRPWE"  # your best_model.pkl
-SHAP_BG_FILE_ID = "YOUR_SHAP_BACKGROUND_FILE_ID_HERE"  # replace if you have shap_background.pkl on Drive
-
-# download if missing
+MODEL_FILE_ID = "16wrwJWrg-XuZFsBWc6N0zIdJVVAbRPWE"
 download_file_from_gdrive(MODEL_FILE_ID, MODEL_PATH)
-# optionally download shap background
-# download_file_from_gdrive(SHAP_BG_FILE_ID, SHAP_BG_PATH)
 
 # ---------------- LOAD MODEL ----------------
 @st.cache_resource
@@ -1047,139 +1297,370 @@ def load_predictor():
 
 predictor = load_predictor()
 
-# ---------------- INPUT UI ----------------
-st.title("🛡️ InsureIQ — Intelligent Premium Predictor")
-st.markdown("Predict your **Health Insurance Premium** and get a detailed report with actionable suggestions.")
+# ================= HERO HEADER =================
+st.markdown("""
+<div class="iq-hero">
+  <div style="display:flex;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;gap:1rem;">
+    <div>
+      <p class="iq-logo">🛡️ Insure<span>IQ</span></p>
+      <p class="iq-tagline">Intelligent Health Insurance Premium Predictor · Powered by LightGBM</p>
+      <div class="iq-badge">⚡ AI-Powered · Real-time Analysis</div>
+    </div>
+    <div style="text-align:right;">
+      <div class="iq-model-info">
+        <div class="iq-model-pill">Model <b>LightGBM</b></div>
+        <div class="iq-model-pill">MAE <b>₹164</b></div>
+        <div class="iq-model-pill">RMSE <b>₹377</b></div>
+        <div class="iq-model-pill">R² <b>0.567</b></div>
+        <div class="iq-model-pill">MAPE <b>18.15%</b></div>
+      </div>
+    </div>
+  </div>
+</div>
+""", unsafe_allow_html=True)
+
+# ================= INPUT SECTION =================
+st.markdown('<div class="iq-section"><span class="iq-section-icon">📋</span>CUSTOMER PROFILE</div>', unsafe_allow_html=True)
 
 col1, col2, col3 = st.columns(3)
 
 with col1:
-    age = st.slider("Age", 18, 85, 40)
-    gender = st.selectbox("Gender", ["M","F"])
-    exposure = st.slider("Exposure Time (Years)", 0.1, 1.0, 1.0)
+    st.markdown('<div class="iq-card">', unsafe_allow_html=True)
+    age      = st.slider("Age", 18, 85, 40)
+    gender   = st.selectbox("Gender", ["M", "F"])
+    exposure = st.slider("Exposure Time (Years)", 0.1, 1.0, 1.0, step=0.05)
+    st.markdown('</div>', unsafe_allow_html=True)
 
 with col2:
+    st.markdown('<div class="iq-card">', unsafe_allow_html=True)
     seniority = st.slider("Seniority (Years)", 0, 30, 5)
-    policy = st.selectbox("Policy Type", ["I","II","III"])
-    reimb = st.selectbox("Reimbursement", ["Yes","No"])
+    policy    = st.selectbox("Policy Type", ["I", "II", "III"])
+    reimb     = st.selectbox("Reimbursement", ["Yes", "No"])
+    st.markdown('</div>', unsafe_allow_html=True)
 
 with col3:
-    new = st.selectbox("New Business", ["Yes","No"])
-    mun = st.number_input("Municipality Insured", 100, 10000, 500)
-    prov = st.number_input("Province Insured", 100, 10000, 3000)
-    claims = st.number_input("Annual Claims Cost", 0, 10000, 1000)
+    st.markdown('<div class="iq-card">', unsafe_allow_html=True)
+    new    = st.selectbox("New Business", ["Yes", "No"])
+    mun    = st.number_input("Municipality Insured", 100, 10000, 500, step=100)
+    prov   = st.number_input("Province Insured", 100, 10000, 3000, step=100)
+    claims = st.number_input("Annual Claims Cost (₹)", 0, 10000, 1000, step=100)
+    st.markdown('</div>', unsafe_allow_html=True)
 
-# ---------------- BUILD DF ----------------
+# ── Predict button (centred) ──
+_, btn_col, _ = st.columns([2, 3, 2])
+with btn_col:
+    predict_clicked = st.button("🔮  Predict My Premium")
+
+# ================= BUILD DATAFRAME =================
 def build_df():
     row = {col: 0 for col in predictor.feature_cols}
     row.update({
-        "age": age,
-        "exposure_time": exposure,
+        "age":               age,
+        "exposure_time":     exposure,
         "seniority_insured": seniority,
-        "seniority_policy": seniority,
-        "n_insured_mun": mun,
-        "n_insured_prov": prov,
-        "n_insured_pc": mun,
-        "cost_claims_year": claims,
-        "gender": gender,
-        "type_policy": policy,
-        "reimbursement": reimb,
-        "new_business": new
+        "seniority_policy":  seniority,
+        "n_insured_mun":     mun,
+        "n_insured_prov":    prov,
+        "n_insured_pc":      mun,
+        "cost_claims_year":  claims,
+        "gender":            gender,
+        "type_policy":       policy,
+        "reimbursement":     reimb,
+        "new_business":      new,
     })
     return pd.DataFrame([row])
 
-# ---------------- PREDICT ----------------
-if st.button("🔮 Predict Premium"):
-    df = build_df()
+# ================= MATPLOTLIB DARK THEME =================
+def set_dark_style():
+    plt.rcParams.update({
+        "figure.facecolor":  "#111827",
+        "axes.facecolor":    "#1a2236",
+        "axes.edgecolor":    "#1e3a5c",
+        "axes.labelcolor":   "#94a3b8",
+        "xtick.color":       "#64748b",
+        "ytick.color":       "#64748b",
+        "text.color":        "#e2e8f0",
+        "grid.color":        "#1e293b",
+        "grid.linewidth":    0.5,
+        "font.family":       "monospace",
+    })
+
+# ================= RESULTS =================
+if predict_clicked:
+    df      = build_df()
     premium = predictor.predict(df)[0]
 
-    st.success(f"💰 Estimated Premium: ₹{premium:,.2f}")
-
-    # ---------------- MULTIPLE SMALL GRAPHS ----------------
-    st.subheader("📊 Visual Insights")
-
-    # Graph 1: Premium vs Average
     avg_premium = 1800
-    fig, ax = plt.subplots(figsize=(3,2))
-    ax.barh(["You","Average"], [premium, avg_premium], color=["dodgerblue","lightgray"])
-    ax.set_title("Premium Comparison", fontsize=10)
-    st.pyplot(fig)
+    delta_pct   = ((premium - avg_premium) / avg_premium) * 100
+    risk_label  = "LOW RISK" if premium < 1000 else ("MEDIUM RISK" if premium < 2500 else "HIGH RISK")
+    risk_color  = "#34d399"  if premium < 1000 else ("#f5c842"     if premium < 2500 else "#f87171")
 
-    # Graph 2: Claims vs Coverage
-    fig2, ax2 = plt.subplots(figsize=(3,2))
-    ax2.pie([claims, max(0, 10000-claims)], labels=["Claims","Remaining Coverage"], colors=["tomato","lightgreen"], autopct='%1.0f%%')
-    ax2.set_title("Claims vs Coverage", fontsize=10)
-    st.pyplot(fig2)
+    # ── Result hero card ──
+    st.markdown(f"""
+    <div class="iq-result">
+      <div>
+        <div class="iq-result-label">Estimated Annual Premium</div>
+        <div class="iq-result-value">₹{premium:,.2f}</div>
+        <div class="iq-result-sub">
+          {"▲" if delta_pct>0 else "▼"} {abs(delta_pct):.1f}% vs. market average of ₹{avg_premium:,}
+          &nbsp;·&nbsp;
+          <span style="color:{risk_color};font-weight:600;">{risk_label}</span>
+        </div>
+      </div>
+      <div class="iq-result-icon">💰</div>
+    </div>
+    """, unsafe_allow_html=True)
 
-    # Graph 3: Seniority & Exposure
-    fig3, ax3 = plt.subplots(figsize=(3,2))
-    ax3.bar(["Seniority","Exposure"], [seniority, exposure], color=["orange","green"])
-    ax3.set_title("Seniority & Exposure", fontsize=10)
-    st.pyplot(fig3)
+    # ── KPI row ──
+    monthly = premium / 12
+    cover_ratio = max(0, (10000 - claims) / 10000 * 100)
+    st.markdown(f"""
+    <div class="iq-kpi-row">
+      <div class="iq-kpi">
+        <div class="iq-kpi-label">Monthly Premium</div>
+        <div class="iq-kpi-value">₹{monthly:,.0f}</div>
+        <div class="iq-kpi-delta delta-neutral">per month</div>
+      </div>
+      <div class="iq-kpi">
+        <div class="iq-kpi-label">vs Market Avg</div>
+        <div class="iq-kpi-value">{"+" if delta_pct>0 else ""}{delta_pct:.1f}%</div>
+        <div class="iq-kpi-delta {'delta-up' if delta_pct>0 else 'delta-down'}">
+          {"above" if delta_pct>0 else "below"} average
+        </div>
+      </div>
+      <div class="iq-kpi">
+        <div class="iq-kpi-label">Coverage Health</div>
+        <div class="iq-kpi-value">{cover_ratio:.0f}%</div>
+        <div class="iq-kpi-delta {'delta-up' if cover_ratio<70 else 'delta-down'}">
+          remaining coverage
+        </div>
+      </div>
+      <div class="iq-kpi">
+        <div class="iq-kpi-label">Policy Seniority</div>
+        <div class="iq-kpi-value">{seniority}y</div>
+        <div class="iq-kpi-delta {'delta-down' if seniority>=10 else 'delta-neutral'}">
+          {"mature" if seniority>=10 else "early stage"}
+        </div>
+      </div>
+      <div class="iq-kpi">
+        <div class="iq-kpi-label">Risk Profile</div>
+        <div class="iq-kpi-value" style="color:{risk_color}">{risk_label.split()[0]}</div>
+        <div class="iq-kpi-delta delta-neutral">assessment</div>
+      </div>
+    </div>
+    """, unsafe_allow_html=True)
 
-    # ---------------- SHAP EXPLAINABILITY ----------------
-    st.subheader("🔍 Feature Contributions")
-    X_bg = joblib.load(SHAP_BG_PATH) if SHAP_BG_PATH.exists() else df
-    explainer = get_explainer(predictor.model, X_bg)
-    shap_vals = explain_instance(explainer, df)
-    shap_df = pd.DataFrame(list(shap_vals.items()), columns=['Feature','Impact'])
-    shap_df = shap_df.sort_values(by='Impact', key=abs, ascending=False)
-    st.table(shap_df.head(10))
+    # ── VISUAL INSIGHTS ──
+    st.markdown('<div class="iq-section"><span class="iq-section-icon">📊</span>VISUAL INSIGHTS</div>', unsafe_allow_html=True)
+    set_dark_style()
 
-    # ---------------- SUGGESTIONS ----------------
-    st.subheader("💡 Personalized Suggestions")
+    g1, g2, g3 = st.columns(3)
+
+    with g1:
+        fig, ax = plt.subplots(figsize=(3.8, 2.6))
+        bars = ax.barh(["Market Avg", "Your Premium"], [avg_premium, premium],
+                       color=["#334155", "#38bdf8"], height=0.5)
+        ax.bar_label(bars, fmt="₹%.0f", padding=4, fontsize=8, color="#e2e8f0")
+        ax.set_xlim(0, max(premium, avg_premium) * 1.3)
+        ax.set_title("Premium vs Market", fontsize=9, color="#94a3b8", pad=8)
+        ax.set_xlabel("Annual ₹", fontsize=7)
+        ax.grid(axis="x", alpha=0.3)
+        ax.spines[["top","right","left"]].set_visible(False)
+        fig.tight_layout(pad=0.6)
+        st.pyplot(fig, use_container_width=False)
+        plt.close(fig)
+
+    with g2:
+        fig2, ax2 = plt.subplots(figsize=(3.0, 2.6))
+        sizes  = [claims, max(1, 10000 - claims)]
+        colors = ["#f87171", "#34d399"]
+        wedges, texts, autotexts = ax2.pie(
+            sizes, labels=["Claims","Coverage"],
+            colors=colors, autopct="%1.0f%%",
+            startangle=90,
+            wedgeprops={"linewidth":0, "edgecolor":"#111827"},
+            textprops={"fontsize":8},
+        )
+        for at in autotexts: at.set_fontsize(8)
+        ax2.set_title("Claims vs Coverage", fontsize=9, color="#94a3b8", pad=8)
+        fig2.tight_layout(pad=0.6)
+        st.pyplot(fig2, use_container_width=False)
+        plt.close(fig2)
+
+    with g3:
+        fig3, ax3 = plt.subplots(figsize=(3.8, 2.6))
+        bars3 = ax3.bar(["Seniority (y)", "Exposure (y)"],
+                        [seniority, exposure],
+                        color=["#f5c842", "#818cf8"], width=0.45)
+        ax3.bar_label(bars3, fmt="%.1f", padding=3, fontsize=8, color="#e2e8f0")
+        ax3.set_title("Seniority & Exposure", fontsize=9, color="#94a3b8", pad=8)
+        ax3.set_ylim(0, max(seniority, exposure, 1) * 1.35)
+        ax3.grid(axis="y", alpha=0.3)
+        ax3.spines[["top","right","left"]].set_visible(False)
+        fig3.tight_layout(pad=0.6)
+        st.pyplot(fig3, use_container_width=False)
+        plt.close(fig3)
+
+    # ── SHAP FEATURE CONTRIBUTIONS ──
+    st.markdown('<div class="iq-section"><span class="iq-section-icon">🔍</span>FEATURE CONTRIBUTIONS (SHAP)</div>', unsafe_allow_html=True)
+
+    try:
+        X_proc = predictor.preprocess(df)
+        X_bg   = pd.concat([X_proc] * 10, ignore_index=True)
+        explainer = get_explainer(predictor.model, X_bg)
+
+        if explainer is None:
+            st.warning("⚠️ SHAP explainer could not be built for this model type.")
+        else:
+            shap_vals = explain_instance(explainer, X_proc)
+            shap_df = (
+                pd.DataFrame(list(shap_vals.items()), columns=["Feature", "Impact"])
+                .sort_values(by="Impact", key=abs, ascending=False)
+                .reset_index(drop=True)
+            )
+            top_df = shap_df.head(10)
+
+            tc1, tc2 = st.columns([1, 1])
+
+            with tc1:
+                st.dataframe(
+                    top_df.style
+                        .format({"Impact": "{:+.4f}"})
+                        .background_gradient(subset=["Impact"], cmap="RdYlGn", vmin=-300, vmax=300),
+                    use_container_width=True,
+                    height=340,
+                )
+
+            with tc2:
+                set_dark_style()
+                fig_s, ax_s = plt.subplots(figsize=(4.5, 3.2))
+                vals_plot   = top_df["Impact"].values[::-1]
+                feats_plot  = top_df["Feature"].values[::-1]
+                bar_colors  = ["#34d399" if v >= 0 else "#f87171" for v in vals_plot]
+                bars_s = ax_s.barh(range(len(feats_plot)), vals_plot, color=bar_colors, height=0.6)
+                ax_s.set_yticks(range(len(feats_plot)))
+                ax_s.set_yticklabels(feats_plot, fontsize=7.5)
+                ax_s.axvline(0, color="#64748b", linewidth=0.8, linestyle="--")
+                ax_s.set_xlabel("SHAP value", fontsize=7.5)
+                ax_s.set_title("Top Feature Contributions", fontsize=9, color="#94a3b8", pad=8)
+                ax_s.grid(axis="x", alpha=0.3)
+                ax_s.spines[["top","right"]].set_visible(False)
+                pos_patch = mpatches.Patch(color="#34d399", label="Increases premium")
+                neg_patch = mpatches.Patch(color="#f87171", label="Reduces premium")
+                ax_s.legend(handles=[pos_patch, neg_patch], fontsize=7,
+                            loc="lower right", framealpha=0.2)
+                fig_s.tight_layout(pad=0.6)
+                st.pyplot(fig_s, use_container_width=False)
+                plt.close(fig_s)
+
+    except Exception as e:
+        st.error(f"SHAP analysis failed: {e}")
+
+    # ── PERSONALIZED SUGGESTIONS ──
+    st.markdown('<div class="iq-section"><span class="iq-section-icon">💡</span>PERSONALIZED SUGGESTIONS</div>', unsafe_allow_html=True)
+
     suggestions = []
     if claims > 3000:
-        suggestions.append("⚠️ High claims cost – consider preventive health measures.")
+        suggestions.append(("warn", "⚠️ High claims cost — consider preventive health measures to lower future premiums."))
     if seniority < 10:
-        suggestions.append("Increase policy seniority for better coverage benefits.")
+        suggestions.append(("tip", "📈 Increase policy seniority for better coverage benefits and loyalty discounts."))
     if policy == "III":
-        suggestions.append("Consider switching to Policy I or II for better premium rates.")
+        suggestions.append(("tip", "💼 Consider switching to Policy I or II for more competitive premium rates."))
     if premium > 3000:
-        suggestions.append("High premium – evaluate risk factors such as claims and age.")
+        suggestions.append(("warn", "📊 High premium detected — review claims history and age risk factors."))
     if not suggestions:
-        suggestions.append("Profile is optimal. Keep up with healthy habits!")
-    for s in suggestions:
-        st.write("•", s)
+        suggestions.append(("ok", "✅ Your profile looks optimal. Maintain healthy habits to keep premiums low!"))
 
-    # ---------------- SIMULATION ----------------
-    st.subheader("🔁 Scenario Simulation")
+    s_cols = st.columns(min(len(suggestions), 2))
+    for i, (stype, stxt) in enumerate(suggestions):
+        cls = "warn" if stype == "warn" else ("ok" if stype == "ok" else "")
+        with s_cols[i % len(s_cols)]:
+            st.markdown(f'<div class="iq-suggestion {cls}">{stxt}</div>', unsafe_allow_html=True)
+
+    # ── SCENARIO SIMULATION ──
+    st.markdown('<div class="iq-section"><span class="iq-section-icon">🔁</span>SCENARIO SIMULATION</div>', unsafe_allow_html=True)
+
     sim_df = df.copy()
     sim_df["seniority_insured"] += 5
     new_premium = predictor.predict(sim_df)[0]
-    st.write(f"New Premium after 5 years seniority: ₹{new_premium:,.2f}")
-    st.write(f"Potential Savings: ₹{premium - new_premium:,.2f}")
+    savings     = premium - new_premium
 
-    # ---------------- REAL-LIFE REPORT ----------------
-    st.subheader("📄 Detailed Insurance Report")
+    st.markdown(f"""
+    <div class="iq-sim-card">
+      <div class="iq-sim-item">
+        <div class="iq-sim-lbl">Current Premium</div>
+        <div class="iq-sim-val">₹{premium:,.2f}</div>
+      </div>
+      <div style="color:#334155;font-size:1.5rem;">→</div>
+      <div class="iq-sim-item">
+        <div class="iq-sim-lbl">After +5 Years Seniority</div>
+        <div class="iq-sim-val">₹{new_premium:,.2f}</div>
+      </div>
+      <div style="color:#334155;font-size:1.5rem;">=</div>
+      <div class="iq-sim-item">
+        <div class="iq-sim-lbl">Potential Savings</div>
+        <div class="iq-sim-val iq-sim-savings">{"+" if savings > 0 else ""}₹{savings:,.2f}</div>
+      </div>
+    </div>
+    """, unsafe_allow_html=True)
+
+    # ── DETAILED REPORT ──
+    st.markdown('<div class="iq-section"><span class="iq-section-icon">📄</span>DETAILED INSURANCE REPORT</div>', unsafe_allow_html=True)
+
+    sugg_text = "\n".join(f"  • {t}" for _, t in suggestions)
     report = f"""
-====================================================
-                  INSURANCE REPORT
-====================================================
+╔══════════════════════════════════════════════════╗
+║           InsureIQ — INSURANCE REPORT            ║
+╚══════════════════════════════════════════════════╝
 
-Policy Holder: ID-{df.index[0]+1000}
-Age: {age} years
-Gender: {gender}
-Policy Type: {policy}
-Seniority: {seniority} years
-Exposure Time: {exposure:.1f} years
-Claims Cost This Year: ₹{claims:,.2f}
-Reimbursement: {reimb}
-New Business: {new}
+Policy Holder : ID-{df.index[0]+1000}
+Date          : {pd.Timestamp.now().strftime('%d %b %Y')}
 
--------------------- Premium --------------------
-Estimated Annual Premium: ₹{premium:,.2f}
+── PERSONAL DETAILS ─────────────────────────────
+  Age           : {age} years
+  Gender        : {gender}
+  Policy Type   : {policy}
+  Seniority     : {seniority} years
+  Exposure Time : {exposure:.2f} years
+  Reimbursement : {reimb}
+  New Business  : {new}
 
--------------------- Recommendations --------------------
-{chr(10).join(suggestions)}
+── FINANCIAL DETAILS ────────────────────────────
+  Municipality Insured : {mun:,}
+  Province Insured     : {prov:,}
+  Annual Claims Cost   : ₹{claims:,.2f}
 
--------------------- Simulation --------------------
-Seniority +5 years -> New Premium: ₹{new_premium:,.2f}
-Potential Savings: ₹{premium - new_premium:,.2f}
+── PREMIUM ESTIMATE ─────────────────────────────
+  Estimated Annual Premium : ₹{premium:,.2f}
+  Monthly Equivalent       : ₹{monthly:,.2f}
+  Risk Classification      : {risk_label}
+  vs Market Average        : {"+" if delta_pct>0 else ""}{delta_pct:.1f}%
 
-====================================================
-Note: This report is for informational purposes only.
-====================================================
+── RECOMMENDATIONS ──────────────────────────────
+{sugg_text}
+
+── SIMULATION ───────────────────────────────────
+  Seniority +5 yrs  →  New Premium : ₹{new_premium:,.2f}
+  Potential Annual Savings         : ₹{savings:,.2f}
+
+════════════════════════════════════════════════════
+  This report is generated by InsureIQ AI system.
+  For informational purposes only.
+════════════════════════════════════════════════════
 """
-    st.download_button("📥 Download Insurance Report", report)
-    st.text_area("📄 Report Preview", report, height=400)
+    rc1, rc2 = st.columns([1, 2])
+    with rc1:
+        st.download_button(
+            "📥  Download Insurance Report",
+            report,
+            file_name=f"insureiq_report_ID{df.index[0]+1000}.txt",
+            mime="text/plain",
+        )
+    st.text_area("📄 Report Preview", report, height=380)
+
+# ── Footer ──
+st.markdown("""
+<div style="text-align:center;padding:2.5rem 0 1rem 0;color:#334155;font-size:.75rem;letter-spacing:.5px;">
+  InsureIQ · Health Insurance Premium Intelligence · Built with LightGBM + SHAP + Streamlit
+</div>
+""", unsafe_allow_html=True)
